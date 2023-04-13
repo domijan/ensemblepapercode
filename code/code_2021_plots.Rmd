@@ -1,0 +1,83 @@
+---
+title: "Code to plot data"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+
+
+```{r}
+set.seed(1979)
+library(tidyverse)
+library(here)
+library(dendextend)
+library(ggthemes)
+library(RColorBrewer)
+```
+
+
+```{r}
+a <- read.csv(here("data", "2021", "recleaneddataset1.csv"))
+
+y_names <- c(
+  "kappa_casein",
+  "alpha_s2_casein",
+  "alpha_s1_casein",
+  "beta_casein",
+  "alpha_lactalbumin",
+  "beta_lactoglobulin_a",
+  "beta_lactoglobulin_b",
+  "Casein_micelle_size",
+  "Heat_stability",
+  "Native_pH",
+  "RCT",
+  "k20",
+  "a30",
+  "a60"
+)
+
+ys <- a |> select(y_names)
+
+
+
+
+ys |>
+  pivot_longer(1:14, "key", "value") |>
+  ggplot(aes(x = value)) +
+  geom_histogram() +
+  facet_wrap(vars(key), scales = "free") +
+  ylab("") +
+  xlab("")
+
+
+axis <- seq(900, 5000, by = 5)
+```
+
+
+```{r}
+allwave <- read.csv(here("data", "2021", "tr.csv"))
+allwave <- allwave[, -c(1:3)]
+
+dim(allwave)
+ind <- sample(553, 50)
+allwave <- allwave[ind, ]
+p2 <- allwave |>
+  mutate(id = 1:nrow(allwave), col = cut(1:nrow(allwave), breaks = seq(1, nrow(allwave), by = 30))) |>
+  pivot_longer(wave_1:wave_1060) |>
+  mutate(name = as.numeric(str_remove(name, "wave_"))) |>
+  ggplot(aes(x = name, y = value, col = 1)) +
+  geom_line(aes(alpha = 0.002)) +
+  ylab("Absorbance") +
+  xlab("") +
+  scale_x_continuous(breaks = seq(0, 1060, by = 53 * 2), labels = as.character(round(seq(min(axis), max(axis), length.out = length(seq(0, 1060, by = 53 * 2)))))) +
+  theme_classic() +
+  guides(color = "none", alpha = "none")
+
+p2
+```
+

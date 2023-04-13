@@ -1,0 +1,557 @@
+---
+title: "Classification example"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r load_libraries}
+library(tidyverse)
+library(here)
+library(tidymodels)
+library(stacks)
+library(discrim)
+library(plsmod)
+
+acc <- function(confusion_matrix) {
+  sum(diag(confusion_matrix)) / sum(confusion_matrix)
+}
+select <- dplyr::select
+```
+
+
+```{r load_tr_data}
+train <- read.csv(here("data", "2022", "training.csv"))
+
+train <- train |> 
+  filter(col1 >= 1)
+```
+
+
+
+
+```{r eval = FALSE}
+test <- read.csv("data/2022/testing.csv")
+test <- test |> filter(col1 >= 1)
+```
+
+Convert to absorbance
+```{r abs}
+train[, 2:1061] <- log10(1 / train[, 2:1061])
+```
+
+
+```{r}
+feats <- readRDS(here("data", "2022", "useful_feats.rds"))
+train <- train |> 
+  select(feats)
+train <- train |> 
+  mutate(Diet = as.factor(Diet))
+```
+
+
+
+
+```{r eval = FALSE}
+nnet_mod <-
+  mlp(
+    hidden_units = 3,
+    penalty = 0.0187,
+    epochs = 515
+  ) |>
+  set_mode("classification") |>
+  set_engine("nnet")
+
+
+lasso_mod <-
+  multinom_reg(
+    penalty = 0.00001,
+    mixture = 1
+  ) |>
+  set_engine("glmnet") |>
+  set_mode("classification")
+
+
+
+en_mod <-
+  multinom_reg(
+    penalty = 0.00001,
+    mixture = 0.5
+  ) |>
+  set_engine("glmnet") |>
+  set_mode("classification")
+
+
+
+
+lda_mod <-
+  discrim_linear() |>
+  set_engine("MASS") |>
+  set_mode("classification")
+
+
+svm_mod <-
+  svm_rbf(
+    rbf_sigma = 0.0336,
+    cost = 1
+  ) |>
+  set_engine("kernlab") |>
+  set_mode("classification")
+
+
+pls_mod <-
+  pls(
+    num_comp = 65
+  ) |>
+  set_engine("mixOmics") |>
+  set_mode("classification")
+
+
+rf_mod <-
+  rand_forest(
+    mtry = 41,
+    trees = 500 # 500
+  ) |>
+  set_engine("ranger") |>
+  set_mode("classification")
+```
+
+
+
+
+```{r eval = FALSE}
+
+
+set.seed(1979)
+
+df_result <- vector(mode = "list", length = 10)
+
+for (i in 1:10) {
+  start_time <- Sys.time()
+
+  print(i)
+  tr <- initial_split(train, prop = .5, strata = Diet)
+  train_data <- training(tr)
+  test_data <- testing(tr)
+
+  mn <- apply(train_data |> select(-Diet), 2, mean)
+  sd <- apply(train_data |> select(-Diet), 2, sd)
+
+  train_data[, -c(1)] <- sweep(train_data[, -c(1)], 2, mn, "-")
+  train_data[, -c(1)] <- sweep(train_data[, -c(1)], 2, sd, "/")
+
+  test_data[, -c(1)] <- sweep(test_data[, -c(1)], 2, mn, "-")
+  test_data[, -c(1)] <- sweep(test_data[, -c(1)], 2, sd, "/")
+
+
+
+  folds <- train_data |> vfold_cv(v = 10, strata = Diet)
+
+
+  spec_rec <- recipe(Diet ~ ., data = train_data)
+  spec_wflow <-
+    workflow() |>
+    add_recipe(spec_rec)
+
+  ctrl_grid <- control_stack_grid()
+  ctrl_res <- control_stack_resamples()
+
+  # ===================================
+
+
+
+
+
+  nnet_wf <-
+    spec_wflow |>
+    add_model(nnet_mod)
+
+  nnet_res <-
+    nnet_wf |>
+    fit_resamples(
+      resamples = folds,
+      # metrics = metric_set(accuracy),
+      control = ctrl_res
+    )
+
+
+  best_mod <- nnet_res |>
+    select_best("accuracy")
+
+
+
+  final_wf <-
+    nnet_wf |>
+    finalize_workflow(best_mod)
+
+
+  final_fit <-
+    final_wf |>
+    last_fit(tr)
+
+
+  nnet_pred <- final_fit |>
+    collect_predictions() |>
+    pull(.pred_class)
+
+
+  # ===================================
+  # ===================================
+  # ===================================
+  # ===================================
+
+
+
+
+  lasso_wf <-
+    spec_wflow |>
+    add_model(lasso_mod)
+
+  lasso_res <-
+    lasso_wf |>
+    fit_resamples(
+      resamples = folds,
+      # metrics = metric_set(accuracy),
+      control = ctrl_res
+    )
+
+
+
+
+
+  best_mod <- lasso_res |>
+    select_best("accuracy")
+
+
+
+  final_wf <-
+    lasso_wf |>
+    finalize_workflow(best_mod)
+
+
+  final_fit <-
+    final_wf |>
+    last_fit(tr)
+
+
+  lasso_pred <- final_fit |>
+    collect_predictions() |>
+    pull(.pred_class)
+
+
+  # ===================================
+  # ===================================
+  # ===================================
+  # ===================================
+
+
+
+
+  en_wf <-
+    spec_wflow |>
+    add_model(en_mod)
+
+  en_res <-
+    en_wf |>
+    fit_resamples(
+      resamples = folds,
+      # metrics = metric_set(accuracy),
+      control = ctrl_res
+    )
+
+
+
+  best_mod <- en_res |>
+    select_best("accuracy")
+
+
+
+  final_wf <-
+    en_wf |>
+    finalize_workflow(best_mod)
+
+
+  final_fit <-
+    final_wf |>
+    last_fit(tr)
+
+
+  en_pred <- final_fit |>
+    collect_predictions() |>
+    pull(.pred_class)
+
+
+
+
+
+
+  # ===================================
+  # ===================================
+  # ===================================
+  # ===================================
+  lda_wf <- spec_wflow |>
+    add_model(lda_mod)
+
+  lda_res <-
+    fit_resamples(
+      lda_wf,
+      resamples = folds,
+      # metrics = metric_set(accuracy),
+      control = ctrl_res
+    )
+
+
+
+
+  best_mod <- lda_res |>
+    select_best("accuracy")
+
+
+
+  final_wf <-
+    lda_wf |>
+    finalize_workflow(best_mod)
+
+
+  final_fit <-
+    final_wf |>
+    last_fit(tr)
+
+
+  lda_pred <- final_fit |>
+    collect_predictions() |>
+    pull(.pred_class)
+
+
+  # ==================================
+  # ===================================
+  # ===================================
+  # ===================================
+
+
+  svm_wf <- spec_wflow |>
+    add_model(svm_mod)
+
+  svm_res <-
+    fit_resamples(
+      svm_wf,
+      resamples = folds,
+      # metrics = metric_set(accuracy)
+      control = ctrl_res
+    )
+
+
+
+  best_mod <- svm_res |>
+    select_best("accuracy")
+
+
+
+  final_wf <-
+    svm_wf |>
+    finalize_workflow(best_mod)
+
+
+  final_fit <-
+    final_wf |>
+    last_fit(tr)
+
+
+  svm_pred <- final_fit |>
+    collect_predictions() |>
+    pull(.pred_class)
+
+
+  # ===================================
+  # ===================================
+  # ===================================
+  # ===================================
+
+
+
+  pls_wf <- spec_wflow |>
+    add_model(pls_mod)
+
+  # pls_mod
+  pls_res <-
+    fit_resamples(
+      pls_wf,
+      resamples = folds,
+      # metrics = metric_set(accuracy)
+      control = ctrl_res
+    )
+
+
+
+  best_mod <- pls_res |>
+    select_best("accuracy")
+
+
+
+  final_wf <-
+    pls_wf |>
+    finalize_workflow(best_mod)
+
+
+  final_fit <-
+    final_wf |>
+    last_fit(tr)
+
+
+  pls_pred <- final_fit |>
+    collect_predictions() |>
+    pull(.pred_class)
+
+
+  # ===================================
+  # ===================================
+  # ===================================
+  # ===================================
+  rf_wf <- spec_wflow |>
+    add_model(rf_mod)
+
+
+
+  rf_res <-
+    rf_wf |>
+    fit_resamples(
+      resamples = folds,
+      control = ctrl_res
+    )
+
+
+  best_mod <- rf_res |>
+    select_best("accuracy")
+
+
+
+  final_wf <-
+    rf_wf |>
+    finalize_workflow(best_mod)
+
+
+  final_fit <-
+    final_wf |>
+    last_fit(tr)
+
+
+  rf_pred <- final_fit |>
+    collect_predictions() |>
+    pull(.pred_class)
+
+
+
+  ## Putting together a stack
+
+
+  model_st <-
+    # initialize the stack
+    stacks() |>
+    # add candidate members
+    add_candidates(lda_res) |>
+    add_candidates(nnet_res) |>
+    add_candidates(svm_res) |>
+    add_candidates(pls_res) |>
+    add_candidates(rf_res) |>
+    add_candidates(lasso_res) |>
+    add_candidates(en_res) |>
+    # determine how to combine their predictions
+    blend_predictions() |>
+    # fit the candidates with nonzero stacking coefficients
+    fit_members()
+
+  # model_st$equations$class$coefs
+
+  ens_pred <-
+    test_data |>
+    predict(model_st, .)
+
+  df_result[[i]] <- tibble(Diet = test_data$Diet, ens_pred, rf_pred, en_pred, svm_pred, pls_pred, nnet_pred, lasso_pred, lda_pred)
+  end_time <- Sys.time()
+  print(end_time - start_time)
+}
+
+
+saveRDS(df_result, "df_result_splits.rds")
+```
+
+
+
+```{r}
+df_result <- readRDS(here("data", "2022", "df_result_splits.rds"))
+library(ensModelVis)
+```
+
+```{r}
+accuracy_fun <- function(truth, pred) sum(diag(table(truth, pred))) / sum(table(truth, pred))
+
+accuracy_mat <- matrix(0, 10, 10)
+
+for (j in 1:10) {
+  df <- df_result[[j]] |> select(-c(Diet, .pred_class))
+  pred_ens <- apply(df, 1, function(x) names(which.max(table(x))))
+  df <- df |> mutate(Maj_vote_pred = as.factor(pred_ens))
+  df <- df |> bind_cols(df_result[[j]] |> select(c(.pred_class)))
+  df <- df |> rename(stack_pred = .pred_class)
+  df <- df |> mutate(truth = df_result[[j]] |> pull(Diet))
+  accuracy_mat[j, ] <- df |>
+    summarise(across(everything(), ~ accuracy_fun(truth, .x))) |>
+    as.matrix()
+}
+
+colnames(accuracy_mat) <- names(df)
+
+accuracy_mat <- accuracy_mat |> as_tibble()
+accuracy_mat <- accuracy_mat |> select(-truth)
+names(accuracy_mat) <- c("RF", "EN", "SVM", "PLS", "NNET", "LASSO", "LDA", "Ens_maj_vote", "Ens_nonneg")
+accuracy_mat |>
+  mutate(Split = 1:10) |>
+  pivot_longer(-Split, names_to = "Algorithm", values_to = "accuracy") |>
+  ggplot(aes(x = Split, y = accuracy, col = Algorithm, group = Algorithm)) +
+  geom_point() +
+  geom_line() +
+  xlab("Random Split") +
+  scale_x_continuous(breaks = seq(1, 10, 1))
+
+accuracy_mat |>
+  mutate(Split = as.factor(1:10)) |>
+  pivot_longer(-Split, names_to = "Algorithm", values_to = "accuracy") |>
+  ggplot(aes(x = reorder(Algorithm, accuracy, decreasing = TRUE), y = accuracy, col = Split, group = Split)) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  xlab("") +
+  geom_line() +
+  guides(col = "none")
+```
+
+```{r}
+data <- accuracy_mat |>
+  mutate(Split = 1:10) |>
+  pivot_longer(-Split, names_to = "Algorithm", values_to = "accuracy")
+res <- aov(accuracy ~ Algorithm * Split, data = data)
+TukeyHSD(res, "Algorithm")$Algorithm
+library(lme4)
+data.nest1.lmer <- lmer(accuracy ~ Algorithm + (1 | Split), data)
+print(summary(data.nest1.lmer)[13])
+car::Anova(data.nest1.lmer, test = "F")
+print(VarCorr(data.nest1.lmer), comp = c("Variance"), digits = 3)
+
+
+library(effects)
+data.eff <- as.data.frame(effect("Algorithm", data.nest1.lmer))
+
+data.eff |>
+  mutate(Algorithm = fct_reorder(Algorithm, desc(fit))) |>
+  ggplot(aes(y = fit, x = Algorithm)) +
+  geom_errorbar(aes(
+    ymin = lower,
+    ymax = upper,
+  ), show.legend = FALSE) +
+  ylab("Accuracy") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  ylim(c(0.5, 0.9))
+```
+
+
